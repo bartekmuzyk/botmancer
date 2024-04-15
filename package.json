@@ -1,6 +1,6 @@
 {
   "name": "botmancer",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A set of helper classes which facilitates the process of creating Discord bots.",
   "main": "index.js",
   "scripts": {

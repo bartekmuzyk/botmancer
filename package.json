@@ -1,13 +1,20 @@
 {
   "name": "bot-helper",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A set of helper classes which facilitates the process of creating Discord bots.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": ["discord", "bot", "api"],
-  "repository": "https://github.com/bartekmuzyk/discord-bot-helper",
+  "keywords": [
+    "discord",
+    "bot",
+    "api"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bartekmuzyk/discord-bot-helper.git"
+  },
   "author": "bartekk",
   "license": "ISC",
   "dependencies": {

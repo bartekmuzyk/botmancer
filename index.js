@@ -19,7 +19,7 @@ function logError(err) {
  * @template SharedConfigType, PersistenceDataType
  */
 class Bot {
-    /** @type {Persistence} */
+    /** @type {Persistence<PersistenceDataType>} */
     persistence;
 
     /** @type {Client} */
@@ -45,7 +45,7 @@ class Bot {
 
     /**
      * @param featuresDirPath {string}
-     * @param persistence {Persistence}
+     * @param persistence {Persistence<PersistenceDataType>}
      * @param interactionStorageFilePath {string}
      * @param sharedConfig {SharedConfigType}
      * @param namedChannels {?Object<string, string>}

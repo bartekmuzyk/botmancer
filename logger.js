@@ -1,0 +1,1 @@
+module.exports = sectionName => (message, ...args) => console.log(`[${sectionName}] ${message}`, ...args);

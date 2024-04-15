@@ -1,6 +1,6 @@
 {
   "name": "botmancer",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A set of helper classes which facilitates the process of creating Discord bots.",
   "main": "index.js",
   "scripts": {
@@ -13,7 +13,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bartekmuzyk/discord-bot-helper.git"
+    "url": "git+https://github.com/bartekmuzyk/botmancer.git"
   },
   "author": "bartekk",
   "license": "ISC",

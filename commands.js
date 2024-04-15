@@ -71,7 +71,7 @@ class Commands {
     async handle(interaction) {
         const cmd = interaction.commandName;
 
-        this.#logger(`Wykonuję /${cmd}`);
+        this.#logger(interaction.isContextMenuCommand() ? `Wykonuję opcję "${cmd}"` : `Wykonuję /${cmd}`);
 
         await this.#commands.get(cmd)?.execute(interaction);
     }

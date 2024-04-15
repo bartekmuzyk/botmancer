@@ -1,47 +1,38 @@
 const fs = require("fs");
 
 /**
- * @typedef {Object} PersistenceData
- * @property {?string} lastSeenPostPublicationDate
- * @property {?NotificatorState} notificatorState
- * @property {Object<string, InteractionHandlerData>} interactionHandlers
- * @property {Object<string, number>} characterPoints
+ * @template PersistenceDataType
  */
-
 class Persistence {
     /** @type {string} */
-    #fileName;
+    #filePath;
 
-    /** @type {PersistenceData} */
+    /** @type {PersistenceDataType} */
     #data;
 
     /**
-     * @param fileName {string}
+     * @param filePath {string}
+     * @param defaultData {PersistenceDataType}
      */
-    constructor(fileName) {
-        this.#fileName = "FLY_APP_NAME" in process.env ? `/persistence/${fileName}` : fileName;
-        this.#data = {
-            lastSeenPostPublicationDate: null,
-            notificatorState: null,
-            interactionHandlers: {},
-            characterPoints: {}
-        };
+    constructor(filePath, defaultData) {
+        this.#filePath = filePath;
+        this.#data = defaultData;
 
-        if (fs.existsSync(this.#fileName)) {
-            const content = fs.readFileSync(this.#fileName, "utf8");
+        if (fs.existsSync(this.#filePath)) {
+            const content = fs.readFileSync(this.#filePath, "utf8");
             this.#data = {...this.#data, ...JSON.parse(content)};
         }
     }
 
     /**
-     * @returns {PersistenceData}
+     * @returns {PersistenceDataType}
      */
     get data() {
         return this.#data;
     }
 
     saveState() {
-        fs.writeFileSync(this.#fileName, JSON.stringify(this.#data, undefined, 2), "utf8");
+        fs.writeFileSync(this.#filePath, JSON.stringify(this.#data, undefined, 2), "utf8");
     }
 }
 

@@ -1,26 +1,28 @@
 const fs = require("fs");
 const path = require("path");
-const {
-    Client: DiscordClient,
-    Events: DiscordEvents,
-    GatewayIntentBits
-} = require("discord.js");
+const {Client, Events, GatewayIntentBits} = require("discord.js");
 const Persistence = require("./persistence");
 const Interactions = require("./interactions");
 const Commands = require("./commands");
-const {logError} = require("./errors");
+const Feature = require("./feature");
 const logger = require("./logger");
+
+function logError(err) {
+    console.error(`\n🛑 ${new Date().toLocaleString()}`);
+    console.error(err);
+    console.error("");
+}
 
 /** @typedef {Record<string, import('discord.js').TextChannel>} ChannelsMapping */
 
 /**
- * @template ConfigType
+ * @template SharedConfigType, PersistenceDataType
  */
 class Bot {
     /** @type {Persistence} */
     persistence;
 
-    /** @type {DiscordClient} */
+    /** @type {Client} */
     discord;
 
     /** @type {Commands} */
@@ -29,10 +31,13 @@ class Bot {
     /** @type {Interactions} */
     interactions;
 
-    /** @type {Object} */
-    config;
+    /** @type {Persistence<Object<string, InteractionHandlerData>>} */
+    interactionStorage;
 
-    /** @param {Set<string>} */
+    /** @type {SharedConfigType} */
+    sharedConfig;
+
+    /** @type {Set<string>} */
     disabledFeatures;
 
     /** @type {ChannelsMapping} */
@@ -40,36 +45,40 @@ class Bot {
 
     /**
      * @param featuresDirPath {string}
-     * @param persistenceFilePath {string}
-     * @param config {ConfigType}
-     * @param disabledFeatures {string[]}
+     * @param persistence {Persistence}
+     * @param interactionStorageFilePath {string}
+     * @param sharedConfig {SharedConfigType}
+     * @param namedChannels {?Object<string, string>}
+     * @param disabledFeatures {?(string[])}
      * @param auth {{token: string, appId: string}}
      */
     constructor({
-        featuresDir: featuresDirPath,
-        persistenceFile: persistenceFilePath,
-        config,
-        disabledFeatures = [],
-        auth
+        featuresDirPath, persistence, interactionStorageFilePath, sharedConfig,
+        namedChannels = null, disabledFeatures = null, auth
     }) {
-        this.discord = new DiscordClient({intents: [GatewayIntentBits.Guilds]});
-        this.persistence = new Persistence(persistenceFilePath);
+        const log = logger("main");
+
+        // noinspection JSUnresolvedReference
+        this.discord = new Client({intents: [GatewayIntentBits.Guilds]});
+        this.persistence = persistence;
         this.commands = new Commands();
         this.interactions = new Interactions();
+        // noinspection JSCheckFunctionSignatures
+        this.interactionStorage = new Persistence(interactionStorageFilePath, {});
 
-        // Features init
-        this.disabledFeatures = new Set(disabledFeatures);
-        const features = this.#loadFeatures(featuresDirPath);
+        this.sharedConfig = sharedConfig;
+        this.disabledFeatures = new Set(disabledFeatures ?? []);
 
-        // Bot init
-        this.discord.once(DiscordEvents.ClientReady,  async readyClient => {
-            const log = logger("main");
+        this.#initInteractions();
 
+        this.discord.once(Events.ClientReady, async readyClient => {
             log(`✔️ Zalogowany jako ${readyClient.user.tag}`);
             log("💾 Załadowano stan:\n%o", this.persistence.data);
+            log("💾 Załadowano dane interakcji:\n%o", this.interactionStorage.data);
 
-            readyClient.on(DiscordEvents.InteractionCreate, async interaction => {
+            readyClient.on(Events.InteractionCreate, async interaction => {
                 log("🖱️ Odebrano jakąś interakcję!");
+
                 try {
                     if (interaction.isButton() || interaction.isModalSubmit()) {
                         log("🖱️ Interakcja: przycisk/modal");
@@ -78,7 +87,7 @@ class Bot {
                         if (!handled) {
                             log(`❌ Nie obsłużono interakcji ${interaction.id} - prawdopodobnie straciła ważność.`);
                             await interaction.reply({
-                                content: "# ⏱️ Koniec czasu!\nNajwyraźniej minęło za dużo czasu i już nie możesz wykonać tej interakcji!",
+                                content: "# ⏱️ Koniec czasu!\nNajwyraźniej minęło za dużo czasu i już nie możesz wykonać tej interakcji.",
                                 ephemeral: true
                             });
                         }
@@ -88,62 +97,60 @@ class Bot {
                     }
                 } catch (e) {
                     logError(e);
+                    const friendlyMessage = "# Sorka, coś się stało...\nWydarzyło się coś niespodziewanego. **Powiadom o tym Bartka!**";
 
                     try {
-                        await interaction.reply({
-                            content: "# Sorka, coś się stało...\nWydarzyło się coś niespodziewanego. **Powiadom o tym Bartka!**",
-                            ephemeral: true
-                        });
+                        await interaction.reply({ content: friendlyMessage, ephemeral: true });
                     } catch (e) {
-                        await interaction.editReply({
-                            content: "# Sorka, coś się stało...\nWydarzyło się coś niespodziewanego. **Powiadom o tym Bartka!**",
-                            ephemeral: true
-                        });
+                        await interaction.editReply({ content: friendlyMessage });
                     }
                 }
             });
 
-            // TODO: additional init
-
             // Channels
             log("🌍 Pobieranie kanałów...");
-            await this.#fetchConfigChannels();
+            await this.#fetchNamedChannels(namedChannels ?? {});
             log(`🌍 Pobrano ${Object.keys(this.channels).length} kanałów!`);
 
             // Features
-            Object.entries(features).forEach(([featureName, feature]) => {
-                featureLoaderLogger(`🔧 Inicjalizacja modułu "${featureName}"...`);
-
-                try {
-                    feature.init();
-                    featureLoaderLogger(`✅ Zainicjalizowano moduł "${featureName}"`);
-                } catch (e) {
-                    featureLoaderLogger(`❌ Błąd podczas inicjalizacji modułu "${featureName}"`);
-                    logError(e);
-                }
-            });
+            this.#initFeatures(featuresDirPath);
 
             // Commands
             log(`⚙️ Rejestrowanie komend...`);
-            const refreshedCommandsCount = await commands.register(config.appId, config.token);
+            const refreshedCommandsCount = await this.commands.register(auth.appId, auth.token);
             log(`⚙️ Komendy zarejestrowane! (${refreshedCommandsCount} komend przeładowanych)`);
 
             log("✔️ Gotowy");
         });
+
+        log("🔑 Logowanie...");
+        // noinspection JSIgnoredPromiseFromCall
+        this.discord.login(auth.token);
+    }
+
+    #initInteractions() {
+        this.interactions.handlers = this.persistence.data.interactionHandlers;
+        this.interactions.handlersModifiedCallback = () => {
+            const log = logger("onHandlersModified");
+
+            log("⚡ Wywołanie");
+            this.persistence.data.interactionHandlers = this.interactions.handlers;
+            this.persistence.saveState();
+        };
     }
 
     /**
      * @param featuresDirPath {string}
-     * @returns {Object<string, import('./features/feature')>}
      */
-    #loadFeatures(featuresDirPath) {
-        const log = logger("featureLoader");
+    #initFeatures(featuresDirPath) {
+        const log = logger("loadFeatures");
 
-        return fs.readdirSync(featuresDirPath).reduce((acc, featureName) => {
+        /** @type {Object<string, Feature>} */
+        const features = fs.readdirSync(featuresDirPath).reduce((acc, featureName) => {
             const fullPath = path.join(featuresDirPath, featureName);
             if (!fs.statSync(fullPath).isDirectory()) return acc;
 
-            if (this.disabledFeatures.includes(featureName)) {
+            if (this.disabledFeatures.has(featureName)) {
                 log(`❌ Pomijam moduł "${featureName}" - wyłączony w konfiguracji`);
                 return acc;
             }
@@ -156,38 +163,39 @@ class Bot {
             }
 
             const FeatureClass = require(featureMainPath);
-            acc[featureName] = new FeatureClass(discord, blogger, persistence, interactions, commands, config, channels);
+            acc[featureName] = new FeatureClass(this);
 
             return acc;
         }, {});
+
+        Object.entries(features).forEach(([featureName, feature]) => {
+            log(`🔧 Inicjalizacja modułu "${featureName}"...`);
+
+            try {
+                feature.init();
+                log(`✅ Zainicjalizowano moduł "${featureName}"`);
+            } catch (e) {
+                log(`❌ Błąd podczas inicjalizacji modułu "${featureName}"`);
+                logError(e);
+            }
+        });
     }
 
-    #initInteractions() {
-        this.interactions.handlers = this.persistence.data.interactionHandlers;
-        this.interactions.handlersModifiedCallback = () => {
-            const log = logger("onHandlersModified");
+    /**
+     * @param channels {Object<string, string>}
+     * @returns {Promise<void>}
+     */
+    async #fetchNamedChannels(channels) {
+        const log = logger("fetchNamedChannels");
 
-            log("⚡ Wywołanie")
-            this.persistence.data.interactionHandlers = this.interactions.handlers;
-            this.persistence.saveState();
-        };
-    }
-
-    async #fetchConfigChannels() {
-        const log = logger("fetchConfigChannels");
-
-        // noinspection JSValidateTypes
-        /** @type {Object<string, string>} */
-        const configChannels = config.channels;
-
-        for (const [internalName, channelId] of Object.entries(configChannels)) {
+        for (const [internalName, channelId] of Object.entries(channels)) {
             // noinspection JSCheckFunctionSignatures
-            const channel = await discord.channels.fetch(channelId);
-            log(`[fetchConfigChannels] ${internalName} (${channelId}) -> #${channel.name}`);
+            const channel = await this.discord.channels.fetch(channelId);
+            log(`${internalName} (${channelId}) -> #${channel.name}`);
             // noinspection JSValidateTypes
-            channels[internalName] = channel;
+            this.channels[internalName] = channel;
         }
     }
 }
 
-module.exports = Bot;
+module.exports = {Bot, Persistence, Feature};

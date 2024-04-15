@@ -1,8 +1,8 @@
 const uniqid = require("uniqid");
-const dates = require("./dates");
 
 /** @typedef {import("discord.js").ButtonInteraction|import("discord.js").ModalSubmitInteraction} DiscordInteraction */
 /** @typedef {(arg: ?any, interaction: DiscordInteraction) => Promise<void>} InteractionHandler */
+
 /**
  * @typedef {Object} InteractionHandlerData
  * @property {string} type
@@ -37,10 +37,10 @@ class Interactions {
     #cleanExpiredHandlers() {
         this.#discordHandlers = Object.entries(this.#discordHandlers).reduce((acc, [handlerId, handlerData]) => {
             if (handlerData.timeToLive) {
-                const creationDate = dates.create(handlerData.creationDate);
-                const expirationDate = dates.addTime(creationDate, handlerData.timeToLive * 60);
+                const creationDate = new Date(handlerData.creationDate);
+                const expirationDate = new Date(creationDate.getTime() + (handlerData.timeToLive * 1000))
 
-                if (expirationDate < dates.now()) {
+                if (expirationDate < new Date()) {
                     return acc;
                 }
             }
@@ -118,7 +118,6 @@ class Interactions {
             await callback(handlerData.arg, interaction);
             return true;
         } else {
-            //throw new Error(`Callback for interaction of type ${handlerData.type} (${interaction.customId}, arg = ${handlerData.arg}) doesn't exist.`);
             return false;
         }
     }

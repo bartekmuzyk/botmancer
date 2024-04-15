@@ -1,6 +1,6 @@
 {
-  "name": "bot-helper",
-  "version": "1.0.1",
+  "name": "discord-bot-helper",
+  "version": "1.0.0",
   "description": "A set of helper classes which facilitates the process of creating Discord bots.",
   "main": "index.js",
   "scripts": {

@@ -1,0 +1,11 @@
+{
+  "include": ["src/**/*"],
+  "compilerOptions": {
+    "allowJs": true,
+    "declaration": true,
+    "outDir": "dist",
+    "declarationMap": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+  }
+}

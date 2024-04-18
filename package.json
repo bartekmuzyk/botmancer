@@ -1,8 +1,8 @@
 {
   "name": "botmancer",
-  "version": "1.0.2",
+  "version": "2.0.0",
   "description": "A set of helper classes which facilitates the process of creating Discord bots.",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -20,5 +20,9 @@
   "dependencies": {
     "discord.js": "^14.14.1",
     "uniqid": "^5.4.0"
+  },
+  "devDependencies": {
+    "@types/uniqid": "^5.3.4",
+    "typescript": "^5.4.5"
   }
 }

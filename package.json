@@ -1,8 +1,12 @@
 {
   "name": "botmancer",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "description": "A set of helper classes which facilitates the process of creating Discord bots.",
-  "main": "src/index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

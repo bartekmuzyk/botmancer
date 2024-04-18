@@ -1,5 +1,5 @@
 import {AnyInteraction} from "./interactions";
-import {Bot} from "./index";
+import {Bot} from "./bot";
 import {GuildMemberRoleManager} from "discord.js";
 
 export default class Feature<SharedConfigType, PersistenceDataType> {

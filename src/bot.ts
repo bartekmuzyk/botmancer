@@ -40,7 +40,7 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     interactionStorage: Persistence<{interactionHandlers: InteractionHandlersCollection}>;
     sharedConfig: SharedConfigType;
     disabledFeatures: Set<string>;
-    channels: ChannelsMapping;
+    channels: ChannelsMapping = {};
 
     constructor(init: BotConfig<SharedConfigType, PersistenceDataType>) {
         const log = logger("main");

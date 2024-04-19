@@ -61,6 +61,7 @@ export default class Interactions {
     on(interactionType: string, cb: InteractionHandler) {
         this.jsHandlers[interactionType] = cb;
     }
+
     createHandler(type: string, arg: any|null = null, timeToLive: number|null = null): string {
         const handlerId = uniqid(`${type}:`);
         this.discordHandlers[handlerId] = {
@@ -89,14 +90,13 @@ export default class Interactions {
 
     async emit(interaction: ButtonOrModalInteraction): Promise<boolean> {
         const handlerData = this.discordHandlers[interaction.customId];
-        const callback = this.jsHandlers[handlerData.type];
 
-        if (callback) {
-            await callback(handlerData.arg, interaction);
-            return true;
-        } else {
+        if (!handlerData) {
             return false;
         }
+
+        await this.jsHandlers[handlerData.type](handlerData.arg, interaction);
+        return true;
     }
 
     get handlers(): InteractionHandlersCollection {
@@ -105,6 +105,6 @@ export default class Interactions {
 
     set handlers(value) {
         this.discordHandlers = cloneHandlers(value);
-        this.cleanExpiredHandlers();
+        this.onHandlersModified();
     }
 }

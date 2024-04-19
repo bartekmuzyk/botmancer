@@ -125,14 +125,14 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     }
 
     private initInteractions() {
-        this.interactions.handlers = this.interactionStorage.data.interactionHandlers;
         this.interactions.handlersModifiedCallback = () => {
             const log = logger("onHandlersModified");
 
             log("⚡ Wywołanie");
             this.interactionStorage.data.interactionHandlers = this.interactions.handlers;
-            this.persistence.saveState();
+            this.interactionStorage.saveState();
         };
+        this.interactions.handlers = this.interactionStorage.data.interactionHandlers;
     }
 
     private initFeatures(featuresDirPath: string) {

@@ -34,20 +34,27 @@ export default class Commands {
 
     createSlash(data: SlashCommandData) {
         const name = data.definition.name;
-        this.logger(`Tworzę /${name}`);
+        this.logger(`Creating slash command /${name}`);
         this.slashCommands.set(name, data);
     }
 
     createInContextMenu(data: ContextMenuCommandData) {
         const name = data.definition.name;
-        this.logger(`Tworzę opcję w menu kontekstowym "${name}"`);
+        this.logger(`Creating context menu command "${name}"`);
         this.contextMenuCommands.set(name, data);
     }
 
-    async register(clientId: string, token: string): Promise<number> {
-        this.logger("Rejestruję...");
+    async register(clientId: string, token: string, cleanse: boolean = false): Promise<number> {
+        this.logger("Registering...");
 
         const rest = new REST().setToken(token);
+
+        if (cleanse) {
+            this.logger("Cleansing first...");
+            await rest.put(Routes.applicationCommands(clientId), { body: [] });
+            this.logger("Cleansing complete!");
+        }
+
         const restCommands = [...this.slashCommands.values()].map(data => data.definition.toJSON());
         const result = await rest.put(Routes.applicationCommands(clientId), {body: restCommands}) as {length: number};
 
@@ -57,13 +64,13 @@ export default class Commands {
     async handle(interaction: AnyCommandInteraction): Promise<void> {
         const cmd = interaction.commandName;
 
-        this.logger(interaction.isContextMenuCommand() ? `Wykonuję opcję "${cmd}"` : `Wykonuję /${cmd}`);
+        this.logger(interaction.isContextMenuCommand() ? `Executing menu command "${cmd}"` : `Executing slash command /${cmd}`);
 
         if (interaction.isContextMenuCommand()) {
             const data = this.contextMenuCommands.get(cmd);
 
             if (!data) {
-                this.logger(`Nie znaleziono polecenia menu kontekstowego "${cmd}"`);
+                this.logger(`Couldn't find context menu command "${cmd}"`);
                 return;
             }
 
@@ -72,7 +79,7 @@ export default class Commands {
             const data = this.slashCommands.get(cmd);
 
             if (!data) {
-                this.logger(`Nie znaleziono komendy /${cmd}`);
+                this.logger(`Couldn't find slash command /${cmd}`);
                 return;
             }
 

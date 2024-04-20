@@ -25,6 +25,7 @@ interface BotConfig<SharedConfigType, PersistenceDataType> {
     sharedConfig: SharedConfigType;
     namedChannels?: Record<string, string>;
     disabledFeatures?: string[];
+    cleanseCommands?: boolean;
     auth: {
         token: string;
         appId: string;
@@ -52,7 +53,7 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     channels: ChannelsMapping = {};
 
     constructor(init: BotConfig<SharedConfigType, PersistenceDataType>) {
-        const log = logger("main");
+        const log = logger("Bot");
 
         this.discord = new Client({intents: [GatewayIntentBits.Guilds]});
         this.persistence = init.persistence;
@@ -67,8 +68,6 @@ export class Bot<SharedConfigType, PersistenceDataType> {
         this.token = init.auth.token;
         this.sharedConfig = init.sharedConfig;
         this.disabledFeatures = new Set(init.disabledFeatures ?? []);
-
-        this.initInteractions();
 
         this.discord.once(Events.ClientReady, async (readyClient: Client) => {
             log(`Logged in as ${readyClient.user.tag}`);
@@ -108,20 +107,29 @@ export class Bot<SharedConfigType, PersistenceDataType> {
                 }
             });
 
+            // Interactions
+            log("Initializing interactions...");
+            this.initInteractions();
+            log("Interactions initialized!");
+
             // Channels
             log("Fetching channels...");
             await this.fetchNamedChannels(init.namedChannels ?? {});
             log(`Fetched ${Object.keys(this.channels).length} channels!`);
 
             // Services
+            log("Initializing services...");
             this.initServices(init.servicesDefinitions);
+            log("Services initialized!");
 
             // Features
+            log("Initializing features...");
             this.initFeatures(init.featuresDirPath);
+            log("Features initialized!");
 
             // Commands
             log(`Registering commands...`);
-            const refreshedCommandsCount = await this.commands.register(init.auth.appId, init.auth.token);
+            const refreshedCommandsCount = await this.commands.register(init.auth.appId, init.auth.token, init.cleanseCommands ?? false);
             log(`Commands registered! (${refreshedCommandsCount} refreshed)`);
 
             log("Ready");
@@ -131,7 +139,6 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     login() {
         const log = logger("login");
         log("Logging in...");
-        // noinspection JSIgnoredPromiseFromCall
         this.discord.login(this.token);
     }
 
@@ -216,10 +223,8 @@ export class Bot<SharedConfigType, PersistenceDataType> {
         const log = logger("fetchNamedChannels");
 
         for (const [internalName, channelId] of Object.entries(channels)) {
-            // noinspection JSCheckFunctionSignatures
             const channel = await this.discord.channels.fetch(channelId) as TextChannel;
             log(`${internalName} (${channelId}) -> #${channel.name}`);
-            // noinspection JSValidateTypes
             this.channels[internalName] = channel;
         }
     }

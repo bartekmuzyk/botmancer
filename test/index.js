@@ -21,6 +21,7 @@ const bot = new Bot({
     namedChannels: {
         "test": config.channel
     },
+    cleanseCommands: config.cleanseCommands,
     sharedConfig: {}
 });
 

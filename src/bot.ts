@@ -118,9 +118,11 @@ export class Bot<SharedConfigType, PersistenceDataType> {
             log(`Fetched ${Object.keys(this.channels).length} channels!`);
 
             // Services
-            log("Initializing services...");
-            this.initServices(init.servicesDefinitions);
-            log("Services initialized!");
+            if (init.servicesDefinitions) {
+                log("Initializing services...");
+                this.initServices(init.servicesDefinitions);
+                log("Services initialized!");
+            }
 
             // Features
             log("Initializing features...");
@@ -137,13 +139,13 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     }
 
     login() {
-        const log = logger("login");
+        const log = logger("login", "yellow");
         log("Logging in...");
         this.discord.login(this.token);
     }
 
     private initServices(servicesDefinitionsFilePath: string) {
-        const log = logger("initServices");
+        const log = logger("initServices", "blue");
 
         log(`Reading service definition from "${servicesDefinitionsFilePath}"`)
         const servicesDefinitions: ServiceDefinition[] = require(servicesDefinitionsFilePath);
@@ -182,7 +184,7 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     }
 
     private initFeatures(featuresDirPath: string) {
-        const log = logger("initFeatures");
+        const log = logger("initFeatures", "green");
 
         const features: FeaturesCollection<SharedConfigType, PersistenceDataType> = fs.readdirSync(featuresDirPath)
             .reduce((acc: FeaturesCollection<SharedConfigType, PersistenceDataType>, featureName: string) => {

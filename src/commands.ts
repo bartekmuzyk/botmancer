@@ -29,7 +29,7 @@ export default class Commands {
     constructor() {
         this.slashCommands = new Collection();
         this.contextMenuCommands = new Collection();
-        this.logger = logger("Commands")
+        this.logger = logger("Commands", "gray")
     }
 
     createSlash(data: SlashCommandData) {

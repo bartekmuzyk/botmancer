@@ -55,7 +55,10 @@ export default class Commands {
             this.logger("Cleansing complete!");
         }
 
-        const restCommands = [...this.slashCommands.values()].map(data => data.definition.toJSON());
+        const restCommands = [
+            ...this.slashCommands.values(),
+            ...this.contextMenuCommands.values()
+        ].map(data => data.definition.toJSON());
         const result = await rest.put(Routes.applicationCommands(clientId), {body: restCommands}) as {length: number};
 
         return result.length;

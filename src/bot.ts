@@ -7,6 +7,7 @@ import Feature from "./feature";
 import {InteractionHandlersCollection} from "./interactions";
 import logger from "./logger";
 import {Client, Events, GatewayIntentBits, Interaction, TextChannel} from "discord.js";
+import Services from "./services";
 
 function logError(err: Error|Object|string) {
     console.error(`\n🛑 ${new Date().toLocaleString()}`);
@@ -18,6 +19,7 @@ type ChannelsMapping = Record<string, import('discord.js').TextChannel>;
 
 interface BotConfig<SharedConfigType, PersistenceDataType> {
     featuresDirPath: string;
+    servicesDefinitions?: string;
     persistence: Persistence<PersistenceDataType>;
     interactionStorageFilePath: string;
     sharedConfig: SharedConfigType;
@@ -29,15 +31,22 @@ interface BotConfig<SharedConfigType, PersistenceDataType> {
     };
 }
 
-type FeaturesCollection<SharedConfigType, PersistenceDataType> = Record<string, Feature<SharedConfigType, PersistenceDataType>>
+type FeaturesCollection<SharedConfigType, PersistenceDataType> = Record<string, Feature<SharedConfigType, PersistenceDataType>>;
+
+interface ServiceDefinition {
+    path: string;
+    parameters?: any[];
+    serviceName?: string;
+}
 
 export class Bot<SharedConfigType, PersistenceDataType> {
     private readonly token: string;
-    persistence: Persistence<PersistenceDataType>;
     discord: Client;
+    persistence: Persistence<PersistenceDataType>;
     commands: Commands;
     interactions: Interactions;
     interactionStorage: Persistence<{interactionHandlers: InteractionHandlersCollection}>;
+    services: Services;
     sharedConfig: SharedConfigType;
     disabledFeatures: Set<string>;
     channels: ChannelsMapping = {};
@@ -45,16 +54,15 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     constructor(init: BotConfig<SharedConfigType, PersistenceDataType>) {
         const log = logger("main");
 
-        // noinspection JSUnresolvedReference
         this.discord = new Client({intents: [GatewayIntentBits.Guilds]});
         this.persistence = init.persistence;
         this.commands = new Commands();
         this.interactions = new Interactions();
-        // noinspection JSCheckFunctionSignatures
         this.interactionStorage = new Persistence<{interactionHandlers: InteractionHandlersCollection}>(
             init.interactionStorageFilePath,
             {interactionHandlers: {}}
         );
+        this.services = new Services();
 
         this.token = init.auth.token;
         this.sharedConfig = init.sharedConfig;
@@ -63,27 +71,27 @@ export class Bot<SharedConfigType, PersistenceDataType> {
         this.initInteractions();
 
         this.discord.once(Events.ClientReady, async (readyClient: Client) => {
-            log(`✔️ Zalogowany jako ${readyClient.user.tag}`);
-            log("💾 Załadowano stan:\n%o", this.persistence.data);
-            log("💾 Załadowano dane interakcji:\n%o", this.interactionStorage.data);
+            log(`Logged in as ${readyClient.user.tag}`);
+            log("Loaded state:\n%o", this.persistence.data);
+            log("Loaded interaction data:\n%o", this.interactionStorage.data);
 
             readyClient.on(Events.InteractionCreate, async (interaction: Interaction) => {
-                log("🖱️ Odebrano jakąś interakcję!");
+                log("Received an interaction!");
 
                 try {
                     if (interaction.isButton() || interaction.isModalSubmit()) {
-                        log("🖱️ Interakcja: przycisk/modal");
+                        log("Interaction: Button/Modal");
                         const handled = await this.interactions.emit(interaction);
 
                         if (!handled) {
-                            log(`❌ Nie obsłużono interakcji ${interaction.id} - prawdopodobnie straciła ważność.`);
+                            log(`Rejected interaction ${interaction.id} - it probably timed out.`);
                             await interaction.reply({
                                 content: "# ⏱️ Koniec czasu!\nNajwyraźniej minęło za dużo czasu i już nie możesz wykonać tej interakcji.",
                                 ephemeral: true
                             });
                         }
                     } else if (interaction.isChatInputCommand() || interaction.isContextMenuCommand()) {
-                        log("🖱️ Interakcja: komenda");
+                        log("Interaction: Command");
                         await this.commands.handle(interaction);
                     }
                 } catch (e) {
@@ -101,42 +109,73 @@ export class Bot<SharedConfigType, PersistenceDataType> {
             });
 
             // Channels
-            log("🌍 Pobieranie kanałów...");
+            log("Fetching channels...");
             await this.fetchNamedChannels(init.namedChannels ?? {});
-            log(`🌍 Pobrano ${Object.keys(this.channels).length} kanałów!`);
+            log(`Fetched ${Object.keys(this.channels).length} channels!`);
+
+            // Services
+            this.initServices(init.servicesDefinitions);
 
             // Features
             this.initFeatures(init.featuresDirPath);
 
             // Commands
-            log(`⚙️ Rejestrowanie komend...`);
+            log(`Registering commands...`);
             const refreshedCommandsCount = await this.commands.register(init.auth.appId, init.auth.token);
-            log(`⚙️ Komendy zarejestrowane! (${refreshedCommandsCount} komend przeładowanych)`);
+            log(`Commands registered! (${refreshedCommandsCount} refreshed)`);
 
-            log("✔️ Gotowy");
+            log("Ready");
         });
     }
 
     login() {
         const log = logger("login");
-        log("🔑 Logowanie...");
+        log("Logging in...");
         // noinspection JSIgnoredPromiseFromCall
         this.discord.login(this.token);
     }
 
-    private initInteractions() {
-        this.interactions.handlersModifiedCallback = () => {
-            const log = logger("onHandlersModified");
+    private initServices(servicesDefinitionsFilePath: string) {
+        const log = logger("initServices");
 
-            log("⚡ Wywołanie");
+        log(`Reading service definition from "${servicesDefinitionsFilePath}"`)
+        const servicesDefinitions: ServiceDefinition[] = require(servicesDefinitionsFilePath);
+        const pathPrefix = path.dirname(servicesDefinitionsFilePath);
+
+        servicesDefinitions.forEach(definition => {
+            const modulePath = path.join(pathPrefix, definition.path);
+            log(`Injecting: ${modulePath}`);
+
+            try {
+                const serviceClass = require(modulePath);
+                const instance = definition.parameters ? new serviceClass(...definition.parameters) : new serviceClass();
+
+                const injectedServiceName = this.services.inject(instance, definition.serviceName ?? null);
+                log(`Injected ${injectedServiceName}`);
+            } catch (e) {
+                log(`Error while injecting service`);
+                logError(e);
+            }
+        });
+    }
+
+    private initInteractions() {
+        const log = logger("initInteractions");
+
+        this.interactions.handlersModifiedCallback = () => {
+            const log = logger("handlersModifiedCallback");
+
+            log("Called");
             this.interactionStorage.data.interactionHandlers = this.interactions.handlers;
             this.interactionStorage.saveState();
         };
+
+        log("Reading saved interactions");
         this.interactions.handlers = this.interactionStorage.data.interactionHandlers;
     }
 
     private initFeatures(featuresDirPath: string) {
-        const log = logger("loadFeatures");
+        const log = logger("initFeatures");
 
         const features: FeaturesCollection<SharedConfigType, PersistenceDataType> = fs.readdirSync(featuresDirPath)
             .reduce((acc: FeaturesCollection<SharedConfigType, PersistenceDataType>, featureName: string) => {
@@ -144,14 +183,14 @@ export class Bot<SharedConfigType, PersistenceDataType> {
                 if (!fs.statSync(fullPath).isDirectory()) return acc;
 
                 if (this.disabledFeatures.has(featureName)) {
-                    log(`❌ Pomijam moduł "${featureName}" - wyłączony w konfiguracji`);
+                    log(`Skipping feature "${featureName}" - disabled in init`);
                     return acc;
                 }
 
                 const featureMainPath = path.join(fullPath, "main.js");
 
                 if (!fs.existsSync(featureMainPath)) {
-                    log(`❌ Pomijam moduł "${featureName}" - brak pliku "main.js"`);
+                    log(`Skipping feature "${featureName}" - no "main.js" file found`);
                     return acc;
                 }
 
@@ -162,13 +201,12 @@ export class Bot<SharedConfigType, PersistenceDataType> {
             }, {});
 
         Object.entries(features).forEach(([featureName, feature]) => {
-            log(`🔧 Inicjalizacja modułu "${featureName}"...`);
+            log(`Initializing feature "${featureName}"...`);
 
             try {
                 feature.init();
-                log(`✅ Zainicjalizowano moduł "${featureName}"`);
             } catch (e) {
-                log(`❌ Błąd podczas inicjalizacji modułu "${featureName}"`);
+                log(`Error while initializing feature "${featureName}"`);
                 logError(e);
             }
         });

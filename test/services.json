@@ -1,0 +1,13 @@
+[
+    {
+        "path": "services/testing.js",
+        "serviceName": "FooBarService"
+    },
+    {
+        "path": "services/parameter.js",
+        "parameters": [
+            "abc",
+            [1, 2, 3, 4]
+        ]
+    }
+]

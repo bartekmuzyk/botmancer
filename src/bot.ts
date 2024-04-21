@@ -53,7 +53,7 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     channels: ChannelsMapping = {};
 
     constructor(init: BotConfig<SharedConfigType, PersistenceDataType>) {
-        const log = logger("Bot");
+        const log = logger("Bot", "blue");
 
         this.discord = new Client({intents: [GatewayIntentBits.Guilds]});
         this.persistence = init.persistence;
@@ -145,7 +145,7 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     }
 
     private initServices(servicesDefinitionsFilePath: string) {
-        const log = logger("initServices", "blue");
+        const log = logger("initServices", "green");
 
         log(`Reading service definition from "${servicesDefinitionsFilePath}"`)
         const servicesDefinitions: ServiceDefinition[] = require(servicesDefinitionsFilePath);

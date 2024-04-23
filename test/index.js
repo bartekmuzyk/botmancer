@@ -1,5 +1,6 @@
 const path = require("path");
 const {Bot, Persistence} = require("../dist");
+const {GatewayIntentBits} = require("discord.js");
 const config = require("./config.json");
 
 const persistence = new Persistence(
@@ -14,15 +15,16 @@ const bot = new Bot({
     servicesDefinitions: path.join(__dirname, "services.json"),
     persistence,
     interactionStorageFilePath: path.join(__dirname, "interactions"),
-    auth: {
-        appId: config.appId,
-        token: config.token
-    },
+    sharedConfig: {},
     namedChannels: {
         "test": config.channel
     },
     cleanseCommands: config.cleanseCommands,
-    sharedConfig: {}
+    auth: {
+        appId: config.appId,
+        token: config.token
+    },
+    additionalIntents: [GatewayIntentBits.GuildMembers]
 });
 
 bot.login();

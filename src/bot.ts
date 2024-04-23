@@ -30,6 +30,7 @@ interface BotConfig<SharedConfigType, PersistenceDataType> {
         token: string;
         appId: string;
     };
+    additionalIntents?: number[];
 }
 
 type FeaturesCollection<SharedConfigType, PersistenceDataType> = Record<string, Feature<SharedConfigType, PersistenceDataType>>;
@@ -55,7 +56,12 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     constructor(init: BotConfig<SharedConfigType, PersistenceDataType>) {
         const log = logger("Bot", "blue");
 
-        this.discord = new Client({intents: [GatewayIntentBits.Guilds]});
+        this.discord = new Client({
+            intents: [
+                GatewayIntentBits.Guilds,
+                ...(init.additionalIntents ?? [])
+            ]
+        });
         this.persistence = init.persistence;
         this.commands = new Commands();
         this.interactions = new Interactions();

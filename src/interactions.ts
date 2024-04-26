@@ -1,4 +1,4 @@
-import * as uniqid from "uniqid"
+import * as uniqid from "uniqid";
 import {
     ButtonInteraction,
     ChatInputCommandInteraction, ContextMenuCommandInteraction,
@@ -11,30 +11,23 @@ export type AnyContextMenuInteraction = ContextMenuCommandInteraction | MessageC
 export type AnyCommandInteraction = AnyContextMenuInteraction | ChatInputCommandInteraction;
 export type AnyInteraction = AnyCommandInteraction | ButtonOrModalInteraction;
 
-export type InteractionHandler = (arg: any|null, interaction: ButtonOrModalInteraction) => Promise<void>;
-export type InteractionHandlerData = {type: string, arg: any|null, creationDate: string, timeToLive: number|null};
-export type InteractionHandlersCollection = Record<string, InteractionHandlerData>
-
-function cloneHandlers(obj: InteractionHandlersCollection) {
-    return Object.entries(obj).reduce((acc, [k, v]) => {
-        acc[k] = {...v};
-        return acc;
-    }, {});
-}
+export type InteractionCallback = (arg: any|null, interaction: ButtonOrModalInteraction) => Promise<void>;
+export type InteractionHandler = {type: string, arg: any|null, creationDate: string, timeToLive: number|null};
+export type InteractionHandlerCollection = Record<string, InteractionHandler>
 
 export default class Interactions {
-    private discordHandlers: InteractionHandlersCollection;
-    private readonly jsHandlers: Record<string, InteractionHandler>;
+    private _handlers: InteractionHandlerCollection;
+    private readonly callbacks: Record<string, InteractionCallback>;
     handlersModifiedCallback: (() => void)|null;
 
     constructor() {
-        this.discordHandlers = {};
-        this.jsHandlers = {};
+        this._handlers = {};
+        this.callbacks = {};
         this.handlersModifiedCallback = null;
     }
 
     private cleanExpiredHandlers() {
-        this.discordHandlers = Object.entries(this.discordHandlers).reduce((acc, [handlerId, handlerData]) => {
+        this._handlers = Object.entries(this._handlers).reduce((acc, [handlerId, handlerData]) => {
             if (handlerData.timeToLive) {
                 const creationDate = new Date(handlerData.creationDate);
                 const expirationDate = new Date(creationDate.getTime() + (handlerData.timeToLive * 1000))
@@ -58,13 +51,13 @@ export default class Interactions {
         }
     }
 
-    on(interactionType: string, cb: InteractionHandler) {
-        this.jsHandlers[interactionType] = cb;
+    on(interactionType: string, cb: InteractionCallback) {
+        this.callbacks[interactionType] = cb;
     }
 
     createHandler(type: string, arg: any|null = null, timeToLive: number|null = null): string {
         const handlerId = uniqid(`${type}:`);
-        this.discordHandlers[handlerId] = {
+        this._handlers[handlerId] = {
             type,
             arg,
             creationDate: new Date().toJSON(),
@@ -77,34 +70,34 @@ export default class Interactions {
 
     removeHandlers(...ids: string[]) {
         for (const id of ids) {
-            delete this.discordHandlers[id];
+            delete this._handlers[id];
         }
 
         this.onHandlersModified();
     }
 
     setHandlerArgument(id: string, newArg: any|null) {
-        this.discordHandlers[id].arg = newArg;
+        this._handlers[id].arg = newArg;
         this.onHandlersModified();
     }
 
     async emit(interaction: ButtonOrModalInteraction): Promise<boolean> {
-        const handlerData = this.discordHandlers[interaction.customId];
+        const handlerData = this._handlers[interaction.customId];
 
         if (!handlerData) {
             return false;
         }
 
-        await this.jsHandlers[handlerData.type](handlerData.arg, interaction);
+        await this.callbacks[handlerData.type](handlerData.arg, interaction);
         return true;
     }
 
-    get handlers(): InteractionHandlersCollection {
-        return cloneHandlers(this.discordHandlers);
+    get handlers(): InteractionHandlerCollection {
+        return structuredClone(this._handlers);
     }
 
-    set handlers(value) {
-        this.discordHandlers = cloneHandlers(value);
+    set handlers(value: InteractionHandlerCollection) {
+        this._handlers = structuredClone(value);
         this.onHandlersModified();
     }
 }

@@ -14,7 +14,7 @@ const bot = new Bot({
     featuresDirPath: path.join(__dirname, "features"),
     servicesDefinitions: path.join(__dirname, "services.json"),
     persistence,
-    interactionStorageFilePath: path.join(__dirname, "interactions"),
+    internalStorageFilePath: path.join(__dirname, "internal"),
     sharedConfig: {},
     namedChannels: {
         "test": config.channel

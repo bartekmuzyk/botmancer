@@ -1,13 +1,13 @@
 import * as fs from "fs";
 import * as path from "path";
 import Persistence from "./persistence";
-import Interactions from "./interactions";
+import Interactions, {InteractionHandlerCollection} from "./interactions";
 import Commands from "./commands";
 import Feature from "./feature";
-import {InteractionHandlersCollection} from "./interactions";
 import logger from "./logger";
-import {Client, Events, GatewayIntentBits, Interaction, TextChannel} from "discord.js";
 import Services from "./services";
+import Cron, {JobHandlerCollection} from "./cron";
+import {Client, Events, GatewayIntentBits, Interaction, TextChannel} from "discord.js";
 
 function logError(err: Error|Object|string) {
     console.error(`\n🛑 ${new Date().toLocaleString()}`);
@@ -21,7 +21,7 @@ interface BotConfig<SharedConfigType, PersistenceDataType> {
     featuresDirPath: string;
     servicesDefinitions?: string;
     persistence: Persistence<PersistenceDataType>;
-    interactionStorageFilePath: string;
+    internalStorageFilePath: string;
     sharedConfig: SharedConfigType;
     namedChannels?: Record<string, string>;
     disabledFeatures?: string[];
@@ -41,14 +41,21 @@ interface ServiceDefinition {
     serviceName?: string;
 }
 
+interface InternalStorageData {
+    interactionHandlers: InteractionHandlerCollection;
+    cronJobs: JobHandlerCollection;
+}
+
 export class Bot<SharedConfigType, PersistenceDataType> {
     private readonly token: string;
     discord: Client;
     persistence: Persistence<PersistenceDataType>;
     commands: Commands;
     interactions: Interactions;
-    interactionStorage: Persistence<{interactionHandlers: InteractionHandlersCollection}>;
+    internalStorage: Persistence<InternalStorageData>;
     services: Services;
+    cron: Cron;
+
     sharedConfig: SharedConfigType;
     disabledFeatures: Set<string>;
     channels: ChannelsMapping = {};
@@ -65,11 +72,15 @@ export class Bot<SharedConfigType, PersistenceDataType> {
         this.persistence = init.persistence;
         this.commands = new Commands();
         this.interactions = new Interactions();
-        this.interactionStorage = new Persistence<{interactionHandlers: InteractionHandlersCollection}>(
-            init.interactionStorageFilePath,
-            {interactionHandlers: {}}
+        this.internalStorage = new Persistence<InternalStorageData>(
+            init.internalStorageFilePath,
+            {
+                interactionHandlers: {},
+                cronJobs: {}
+            }
         );
         this.services = new Services();
+        this.cron = new Cron();
 
         this.token = init.auth.token;
         this.sharedConfig = init.sharedConfig;
@@ -77,8 +88,8 @@ export class Bot<SharedConfigType, PersistenceDataType> {
 
         this.discord.once(Events.ClientReady, async (readyClient: Client) => {
             log(`Logged in as ${readyClient.user.tag}`);
-            log("Loaded state:\n%o", this.persistence.data);
-            log("Loaded interaction data:\n%o", this.interactionStorage.data);
+            log("Recovered persistence data:\n%o", this.persistence.data);
+            log("Recovered internal state:\n%o", this.internalStorage.data);
 
             readyClient.on(Events.InteractionCreate, async (interaction: Interaction) => {
                 log("Received an interaction!");
@@ -140,7 +151,12 @@ export class Bot<SharedConfigType, PersistenceDataType> {
             const refreshedCommandsCount = await this.commands.register(init.auth.appId, init.auth.token, init.cleanseCommands ?? false);
             log(`Commands registered! (${refreshedCommandsCount} refreshed)`);
 
-            log("Ready");
+            // Cron
+            log("Initializing cron...");
+            this.initCron();
+            log("Cron initialized!");
+
+            log("Ready.");
         });
     }
 
@@ -148,6 +164,16 @@ export class Bot<SharedConfigType, PersistenceDataType> {
         const log = logger("login", "yellow");
         log("Logging in...");
         this.discord.login(this.token);
+    }
+
+    private async fetchNamedChannels(channels: Record<string, string>): Promise<void> {
+        const log = logger("fetchNamedChannels");
+
+        for (const [internalName, channelId] of Object.entries(channels)) {
+            const channel = await this.discord.channels.fetch(channelId) as TextChannel;
+            log(`${internalName} (${channelId}) -> #${channel.name}`);
+            this.channels[internalName] = channel;
+        }
     }
 
     private initServices(servicesDefinitionsFilePath: string) {
@@ -178,15 +204,15 @@ export class Bot<SharedConfigType, PersistenceDataType> {
         const log = logger("initInteractions");
 
         this.interactions.handlersModifiedCallback = () => {
-            const log = logger("handlersModifiedCallback");
+            const log = logger("interactions/handlersModifiedCallback");
 
             log("Called");
-            this.interactionStorage.data.interactionHandlers = this.interactions.handlers;
-            this.interactionStorage.saveState();
+            this.internalStorage.data.interactionHandlers = this.interactions.handlers;
+            this.internalStorage.saveState();
         };
 
         log("Reading saved interactions");
-        this.interactions.handlers = this.interactionStorage.data.interactionHandlers;
+        this.interactions.handlers = this.internalStorage.data.interactionHandlers;
     }
 
     private initFeatures(featuresDirPath: string) {
@@ -227,13 +253,32 @@ export class Bot<SharedConfigType, PersistenceDataType> {
         });
     }
 
-    private async fetchNamedChannels(channels: Record<string, string>): Promise<void> {
-        const log = logger("fetchNamedChannels");
+    private initCron() {
+        const log = logger("initCron");
 
-        for (const [internalName, channelId] of Object.entries(channels)) {
-            const channel = await this.discord.channels.fetch(channelId) as TextChannel;
-            log(`${internalName} (${channelId}) -> #${channel.name}`);
-            this.channels[internalName] = channel;
-        }
+        this.cron.handlersModifiedCallback = () => {
+            const log = logger("cron/handlersModifiedCallback");
+
+            log("Called");
+            this.internalStorage.data.cronJobs = this.cron.handlers;
+            this.internalStorage.saveState();
+        };
+
+        log("Reading saved cron jobs");
+
+        Object.entries(this.internalStorage.data.cronJobs)
+            .forEach(([handlerId, handlerData]) => {
+                const executionTime = new Date(handlerData.executionTime);
+                const now = new Date();
+
+                if (executionTime <= now) {
+                    log(`Invoking "${handlerData.type}" callback (${executionTime.toLocaleString()} <= ${now.toLocaleString()}). arg:\n%o`, handlerData.arg);
+                    this.cron.invokeCallback(handlerData.type, handlerData.arg);
+                    return;
+                }
+
+                log(`Recovering "${handlerId}" (to execute at ${executionTime.toLocaleString()}).`);
+                this.cron.createJob(handlerData.type, executionTime, handlerData.arg, handlerId);
+            });
     }
 }

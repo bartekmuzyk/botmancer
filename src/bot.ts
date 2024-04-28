@@ -167,7 +167,7 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     }
 
     private async fetchNamedChannels(channels: Record<string, string>): Promise<void> {
-        const log = logger("fetchNamedChannels");
+        const log = logger("fetchNamedChannels", "green");
 
         for (const [internalName, channelId] of Object.entries(channels)) {
             const channel = await this.discord.channels.fetch(channelId) as TextChannel;
@@ -201,10 +201,10 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     }
 
     private initInteractions() {
-        const log = logger("initInteractions");
+        const log = logger("initInteractions", "green");
 
         this.interactions.handlersModifiedCallback = () => {
-            const log = logger("interactions/handlersModifiedCallback");
+            const log = logger("interactions/handlersModifiedCallback", "yellow");
 
             log("Called");
             this.internalStorage.data.interactionHandlers = this.interactions.handlers;
@@ -254,10 +254,10 @@ export class Bot<SharedConfigType, PersistenceDataType> {
     }
 
     private initCron() {
-        const log = logger("initCron");
+        const log = logger("initCron", "green");
 
         this.cron.handlersModifiedCallback = () => {
-            const log = logger("cron/handlersModifiedCallback");
+            const log = logger("cron/handlersModifiedCallback", "yellow");
 
             log("Called");
             this.internalStorage.data.cronJobs = this.cron.handlers;
@@ -274,11 +274,14 @@ export class Bot<SharedConfigType, PersistenceDataType> {
                 if (executionTime <= now) {
                     log(`Invoking "${handlerData.type}" callback (${executionTime.toLocaleString()} <= ${now.toLocaleString()}). arg:\n%o`, handlerData.arg);
                     this.cron.invokeCallback(handlerData.type, handlerData.arg);
+                    delete this.internalStorage.data.cronJobs[handlerId];
                     return;
                 }
 
                 log(`Recovering "${handlerId}" (to execute at ${executionTime.toLocaleString()}).`);
                 this.cron.createJob(handlerData.type, executionTime, handlerData.arg, handlerId);
             });
+        
+        this.internalStorage.saveState();
     }
 }

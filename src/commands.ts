@@ -67,9 +67,8 @@ export default class Commands {
     async handle(interaction: AnyCommandInteraction): Promise<void> {
         const cmd = interaction.commandName;
 
-        this.logger(interaction.isContextMenuCommand() ? `Executing menu command "${cmd}"` : `Executing slash command /${cmd}`);
-
         if (interaction.isContextMenuCommand()) {
+            this.logger(`Executing menu command "${cmd}"`)
             const data = this.contextMenuCommands.get(cmd);
 
             if (!data) {
@@ -79,6 +78,7 @@ export default class Commands {
 
             await data.execute(interaction);
         } else if (interaction.isChatInputCommand()) {
+            this.logger(`Executing slash command /${cmd}`);
             const data = this.slashCommands.get(cmd);
 
             if (!data) {

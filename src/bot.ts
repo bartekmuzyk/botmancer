@@ -15,7 +15,7 @@ function logError(err: Error|Object|string) {
     console.error("");
 }
 
-type ChannelsMapping = Record<string, import('discord.js').TextChannel>;
+type ChannelsMapping = Record<string, TextChannel>;
 
 interface BotConfig<SharedConfigType, PersistenceDataType> {
     featuresDirPath: string;

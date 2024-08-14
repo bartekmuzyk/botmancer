@@ -137,7 +137,7 @@ export class Bot<SharedConfigType, PersistenceDataType> {
             // Services
             if (init.servicesDefinitions) {
                 log("Initializing services...");
-                this.initServices(init.servicesDefinitions);
+                await this.initServices(init.servicesDefinitions);
                 log("Services initialized!");
             }
 
@@ -176,14 +176,14 @@ export class Bot<SharedConfigType, PersistenceDataType> {
         }
     }
 
-    private initServices(servicesDefinitionsFilePath: string) {
+    private async initServices(servicesDefinitionsFilePath: string) {
         const log = logger("initServices", "green");
 
         log(`Reading service definition from "${servicesDefinitionsFilePath}"`)
         const servicesDefinitions: ServiceDefinition[] = require(servicesDefinitionsFilePath);
         const pathPrefix = path.dirname(servicesDefinitionsFilePath);
 
-        servicesDefinitions.forEach(definition => {
+        for (const definition of servicesDefinitions) {
             const modulePath = path.join(pathPrefix, definition.path);
             log(`Injecting: ${modulePath}`);
 
@@ -191,13 +191,17 @@ export class Bot<SharedConfigType, PersistenceDataType> {
                 const serviceClass = require(modulePath);
                 const instance = definition.parameters ? new serviceClass(...definition.parameters) : new serviceClass();
 
+                if (typeof instance["postConstruct"] === "function") {
+                    await instance.postConstruct();
+                }
+
                 const injectedServiceName = this.services.inject(instance, definition.serviceName ?? null);
                 log(`Injected ${injectedServiceName}`);
             } catch (e) {
                 log(`Error while injecting service`);
                 logError(e);
             }
-        });
+        }
     }
 
     private initInteractions() {
